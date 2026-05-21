@@ -1,1 +1,132 @@
-# Podcastmaker
+# The Essayist: Automated Classical Essay Podcast Generator
+
+**The Essayist** is a command-line pipeline that automatically searches, extracts, and transforms classical essays and philosophical works from Project Gutenberg into fully produced, professional podcasts. 
+
+The generated podcasts feature two distinct AI hosts, **Marcus** (the curious host/examiner representing the listener) and **Julian** (the intellectual narrator and guide), discussing complex historical concepts using Socratic dialogue or philosophical analysis—complete with background music, dynamic audio pacing, active listening cues, and standard ID3 metadata.
+
+---
+
+## 🏗️ Architecture & Pipeline Workflow
+
+Below is the high-level workflow of the system from essay extraction to the final tagged MP3 podcast:
+
+```mermaid
+graph TD
+    A[User Search Query] --> B[Gutenberg API / mirrors]
+    B --> C[Extract Selected Essay & Clean text for TTS]
+    C --> D[Wikipedia Context Lookup]
+    C & D --> E[LLM Script Generation via OpenRouter/Groq]
+    E --> F[Script Parsed into Structured JSON Turns]
+    F --> G[Concurrent TTS Rendering via Edge-TTS]
+    G --> H[Audio Mixing & active listening cue injection via FFmpeg]
+    H --> I[Metadata Packaging show notes, VTT, chapters]
+    I --> J[Embed ID3v2 Tags & metadata into MP3]
+    J --> K[Final Production Output MP3]
+```
+
+---
+
+## ✨ Features
+
+- 📚 **Robust Gutenberg Integration**: Search and extract text/HTML format essays directly from Project Gutenberg using the Gutendex API, with built-in fallbacks to four distinct mirror networks in case of downtime or bot-protection issues.
+- 🧹 **TTS-Ready Text Cleaning**: Automatically cleans Gutenberg texts by trimming license boilerplate, fixing line-wrap hyphenations, and normalizing white space.
+- 🔍 **Wikipedia Historical Context**: Programmatically fetches historical and biographical context about the author/subject from Wikipedia to feed the podcast's introduction.
+- 🤖 **Multi-Model LLM Scripting**: Generates engaging Socratic discussions or philosophical debates using OpenRouter or Groq. Utilizes a list of fallback models to ensure robust execution even during rate limits or API outages.
+- 🎙️ **Concurrent Text-to-Speech (TTS)**: Translates script turns into voice concurrently using Microsoft Edge TTS, applying phonetic pronunciation corrections for difficult philosopher names (e.g., Nietzsche, Schopenhauer) and speed/pitch adjustments based on the host's tone.
+- 🎵 **Studio-Grade Audio Mixing**: Uses FFmpeg to mix vocal tracks with background music, adjust volume levels, inject realistic listener cues (like *mhm*, *yeah*, *right*), and stitch everything together.
+- 📝 **Automatic Metadata & SEO Package**: Generates Spotify-ready title, SEO description, tags, interactive chapter markers, a WebVTT transcript, and embeds ID3 tags directly into the final MP3 file.
+
+---
+
+## 📁 Repository Structure
+
+```
+Project_Gutenberg_Extractor_CLI/
+├── assets/                  # Contains intro/outro themes and active listening sound clips
+│   ├── active_listening/    # "mhm.mp3", "yeah.mp3", etc.
+│   └── music/               # Intro/outro backing tracks
+├── output/                  # Raw pre-processed essay texts extracted from Gutenberg
+├── podcast_output/          # Generated podcasts (categorized in timestamped folders)
+│   └── [episode_folders]/   # Contain final MP3, VTT transcripts, show notes, and chapter files
+├── temp/                    # Temp directory for caching individual TTS speech segments
+├── .env                     # Local API keys (OPENROUTER_API_KEY, GROQ_API_KEY, host/narrator voices)
+├── .gitignore               # Configured to protect API keys, virtual environment, and large media files
+├── analyze_wordcounts.py    # Script helper to analyze vocabulary/word distributions
+├── audio_generator.py       # Interacts with Edge-TTS to render audio segments
+├── extractor.py             # CLI Search, Gutenberg extraction, Wikipedia lookups, and orchestrator
+├── metadata_generator.py    # Generates chapter markers, show notes, and WebVTT transcripts
+├── mixer.py                 # Mixes speech segments, active listening audio, and background music
+├── podcast_generator.py     # Orchestrates the podcast generation stages (script, audio, mix, meta)
+├── requirements.txt         # Python project dependencies
+├── script_generator.py      # Connects to LLMs via OpenRouter/Groq to generate the script
+├── test_pronunciation.py    # Unit helper to check phonetic pronunciation modifications
+├── usage_tracker.py         # Logs API usage, tokens consumed, and session diagnostics
+└── voices.txt               # Catalog of available Microsoft Edge TTS neural voices
+```
+
+---
+
+## 🚀 Installation & Setup
+
+### Prerequisites
+- **Python 3.10+**
+- **FFmpeg**: Make sure `ffmpeg` is installed and added to your system's PATH. (Required for mixing audio files).
+
+### Installation Steps
+1. Clone the repository:
+   ```bash
+   git clone https://github.com/kvothdevian/Podcastmaker.git
+   cd Podcastmaker
+   ```
+2. Set up a Python Virtual Environment:
+   ```bash
+   python -m venv venv
+   # On Windows:
+   venv\Scripts\activate
+   # On macOS/Linux:
+   source venv/bin/activate
+   ```
+3. Install dependencies:
+   ```bash
+   pip install -r requirements.txt
+   ```
+4. Configure Environment Variables:
+   Create a `.env` file in the root directory and add your API keys:
+   ```env
+   # API Keys
+   OPENROUTER_API_KEY=your_openrouter_key
+   GROQ_API_KEY=your_groq_key
+
+   # Voice Customizations (optional)
+   HOST_VOICE=en-US-BrianNeural
+   NARRATOR_VOICE=en-US-AndrewNeural
+   ```
+
+---
+
+## 📖 Usage Guide
+
+The project is designed to run seamlessly from start to finish via `extractor.py`.
+
+### 1. Run the Full Pipeline
+To start searching, extracting, and rendering a podcast:
+```bash
+python extractor.py
+```
+This interactive prompt will:
+1. Search Project Gutenberg for your author, book, or keyword.
+2. Let you select from the top 10 book matches.
+3. Automatically split the book and display a list of chapters/essays.
+4. Download the chosen chapter, clean the text, lookup Wikipedia context, and automatically invoke the podcast creation pipeline.
+
+### 2. Run Only the Podcast Generator (On Local Texts)
+If you already have a text file preprocessed and saved, you can run the podcast pipeline directly on that file:
+```bash
+python podcast_generator.py path/to/essay.txt --title "My Custom Essay" --author "Author Name" --episode 1
+```
+
+---
+
+## 🔒 Security Notes
+- The `.env` file, python virtual environment (`venv/`), raw output directories, and temporary audio render folders are listed in `.gitignore` to prevent any API keys, credentials, or heavy audio assets from being uploaded to GitHub.
+- Secret keys can be stored securely in **GitHub Actions Secrets** (using the names `OPENROUTER_API_KEY` and `GROQ_API_KEY`) if running automated tasks on the cloud.

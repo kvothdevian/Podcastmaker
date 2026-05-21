@@ -1,0 +1,27 @@
+# Secrets and API Keys
+.env
+
+# Python Virtual Environment
+venv/
+.venv/
+env/
+
+# Python Cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Local temporary/test files
+temp/
+temp_test/
+temp_test_tts.mp3
+temp_test_tts_bad.mp3
+
+# Output folders (large audio files, transcripts)
+output/
+podcast_output/
+
+# Logs and tracking files
+usage_log.json
+*.log

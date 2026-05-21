@@ -132,16 +132,6 @@ def mix_audio(turns: list[dict], output_path: str):
             delay_ms = int(start_times[i] * 1000)
             marcus_filters.append(f"[{m_idx}:a]adelay={delay_ms}|{delay_ms}[m{m_idx}]")
             m_idx += 1
-        elif turn["speaker"] == "JULIAN" and turn["active_listening_cue"]:
-            # Julian is speaking, so Marcus gives a soft active listening cue
-            cue = turn["active_listening_cue"].lower().strip()
-            cue_path = os.path.join("assets", "active_listening", f"{cue}.mp3")
-            if os.path.exists(cue_path):
-                marcus_inputs += ["-i", cue_path]
-                # Delay to middle of Julian's speech block
-                cue_delay_ms = int((start_times[i] + min(1.5, durations[i] / 2.0)) * 1000)
-                marcus_filters.append(f"[{m_idx}:a]volume=0.2,adelay={cue_delay_ms}|{cue_delay_ms}[m{m_idx}]")
-                m_idx += 1
 
     # 4. Assemble Julian Track (Inputs and adelay filters)
     julian_inputs = []
@@ -155,16 +145,6 @@ def mix_audio(turns: list[dict], output_path: str):
             delay_ms = int(start_times[i] * 1000)
             julian_filters.append(f"[{j_idx}:a]adelay={delay_ms}|{delay_ms}[j{j_idx}]")
             j_idx += 1
-        elif turn["speaker"] == "MARCUS" and turn["active_listening_cue"]:
-            # Marcus is speaking, so Julian gives a soft active listening cue
-            cue = turn["active_listening_cue"].lower().strip()
-            # Use Julian's listening cue voice file suffix
-            cue_path = os.path.join("assets", "active_listening", f"{cue}_j.mp3")
-            if os.path.exists(cue_path):
-                julian_inputs += ["-i", cue_path]
-                cue_delay_ms = int((start_times[i] + min(1.5, durations[i] / 2.0)) * 1000)
-                julian_filters.append(f"[{j_idx}:a]volume=0.2,adelay={cue_delay_ms}|{cue_delay_ms}[j{j_idx}]")
-                j_idx += 1
 
     # 5. Compile Marcus Track File
     marcus_track_path = os.path.join(temp_dir, "marcus_full_track.mp3")

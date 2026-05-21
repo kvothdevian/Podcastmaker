@@ -53,9 +53,9 @@ OUTPUT FORMAT:
 You MUST respond with a valid JSON array of objects representing dialogue turns. Do not include any other markdown decoration or wrapping (like ```json ... ```) outside the JSON array.
 Each object in the array MUST have exactly these four keys:
 1. "speaker": Either "MARCUS" or "JULIAN"
-2. "dialogue": The text for the speaker. Cap each speaker's turn at around 50-80 words max to keep the dialogue snappy yet highly detailed and substantive.
+2. "dialogue": The text for the speaker. Julian's turns should be long and detailed, around 100-160 words. Marcus's turns should be short and snappy, around 15-30 words.
 3. "intent": One of "inquisitive", "reflective", "excited", "serious", or "default"
-4. "active_listening_cue": Either "right", "mhm", "yeah", or null. Set this ONLY when the other speaker is speaking, to indicate that the listener can give a brief nod/vocal validation. Keep it mostly null (use it sparingly, max 3-4 times total per segment).
+4. "active_listening_cue": Always null. DO NOT use active listening cues.
 
 Example output:
 [
@@ -64,28 +64,17 @@ Example output:
 ]
 """
 
-SOCRATIC_PROMPT = UNBIASED_REPRESENTATION_RULES + """You are writing for "The Essayist" podcast. 
-Two hosts:
-1. MARCUS (Host): Professional, high-energy, inquisitive. He represents the listener. He should sound slightly excited to be exploring these ideas, focusing on understanding the author's logic and structure. He asks clarifying questions to help extract the author's exact perspective.
-2. JULIAN (Narrator/Guide): Thoughtful, intellectual, warm, and deep. He is a master of the essay. His tone is contemplative. He explains the author's arguments directly and clearly without watering them down or apologizing for them.
+MONOLOGUE_WITH_INTERJECTIONS_PROMPT = UNBIASED_REPRESENTATION_RULES + """You are writing for "The Essayist" podcast. 
+Two hosts with clear, asymmetrical roles:
+1. MARCUS (Host): Host of the show. He does the introduction and conclusion (outro). During the main discussion, he does NOT engage in rapid back-and-forth dialogue. Instead, he only interjects once or twice per segment to ask a major transition question or request clarification. His lines must be brief (15-30 words).
+2. JULIAN (Narrator/Guide): The primary presenter/speaker who explains the essay's core themes, context, and arguments. He carries the main theme of the episode. He speaks in longer, continuous, and highly detailed monograph-style turns (100–160 words) to unpack the ideas comprehensively.
 
-NARRATIVE ARCHETYPE: The Socratic Method
-- Julian acts as the guide/philosopher, walking Marcus through the author's arguments.
-- Marcus responds, reflects, and seeks to fully grasp the internal mechanics of the author's reasoning.
-- The conversation should focus entirely on outlining and unpacking the author's thesis, arguments, and conclusions, no matter how controversial, without trying to soften, judge, or correct them.
-- Serious but highly engaging dialogue. Use rhetorical questions. Short sentences. Conversational fragments.
-""" + JSON_FORMAT_RULES
-
-DEBATE_PROMPT = UNBIASED_REPRESENTATION_RULES + """You are writing for "The Essayist" podcast. 
-Two hosts:
-1. MARCUS (Host): Inquisitive, analytical. He acts as the examiner, questioning the internal consistency and logical progression of the author's arguments. He pushes Julian to explain how the author supports their most controversial or extreme points.
-2. JULIAN (Narrator/Guide): Thoughtful, intellectual, warm, and deep. He is a master of the essay. He articulates and defends the author's logic and premises, explaining how the author builds their case.
-
-NARRATIVE ARCHETYPE: The Philosophical Analysis
-- Marcus probes the logical weak points or controversial claims within the author's essay.
-- Julian explains the author's defense and internal reasoning.
-- Both hosts MUST remain entirely objective: they do not insert modern moral judgements, do not apologize for the author's offensive views, and do not try to make the views seem acceptable to modern standards. They treat the essay as a historical and philosophical text to be analyzed exactly as written.
-- Serious, engaging, but friendly intellectual friction. Short sentences. Conversational fragments.
+NARRATIVE ARCHETYPE: Monologue with Asymmetrical Interjections
+- Marcus sets the stage in the intro, introduces the author/essay, and then hands the floor to Julian.
+- Julian delivers the core content, going deep into the arguments, thesis, and evidence.
+- Marcus chimes in only once or twice per segment with a thoughtful high-level question or transition prompt, allowing Julian to continue his explanation.
+- Marcus finishes the episode with a Listener Challenge in the outro.
+- Both hosts must remain entirely objective, avoiding modern moralizing or apologizing for the author.
 """ + JSON_FORMAT_RULES
 
 # Max chars sent to LLM - using larger context if available
@@ -285,7 +274,8 @@ def clean_and_parse_json(text: str) -> list:
 
 def generate_script(essay_text: str, essay_title: str, author: str, usage_log: dict, episode_num: int = 1, historical_context: str = "") -> tuple[str, str]:
     """
-    Generate a 15-minute, 2-segment interactive script using Socratic or Debate archetypes and JSON structured outputs.
+    Generate a 3-segment monologue-with-interjections style script and JSON structured outputs.
+    Total word count target: ~5,500 words.
     """
     # Step 1: Digest
     digest = robust_llm_call(
@@ -296,13 +286,8 @@ def generate_script(essay_text: str, essay_title: str, author: str, usage_log: d
         usage_log=usage_log
     )
     
-    # Choose system prompt based on episode number
-    if episode_num % 2 == 0:
-        archetype_name = "The Philosophical Debate"
-        system_prompt = DEBATE_PROMPT
-    else:
-        archetype_name = "The Socratic Method"
-        system_prompt = SOCRATIC_PROMPT
+    archetype_name = "Monologue with Asymmetrical Interjections"
+    system_prompt = MONOLOGUE_WITH_INTERJECTIONS_PROMPT
         
     print(f"  Selected Archetype: {archetype_name}")
     
@@ -318,9 +303,9 @@ Essay: {essay_title} by {author}
 {context_str}Full Logic Digest:
 {digest}
 
-Target: 2000 words. Focus on the core foundation and a modern parallel.
-You MUST write at least 30 to 40 back-and-forth speaker turns between Marcus and Julian to cover the details comprehensively.
+Target: ~1800 words. Focus on the introduction, historical/biographical context, and the essay's core thesis and foundation.
 Marcus must start the script with the exact opening statement: "{COMMON_OPENING}" and introduce Julian.
+Marcus should introduce the topic, and then Julian should take over. Marcus should only interject once or twice in the middle of this segment with a brief question or observation (15-30 words). Julian should deliver the main content in long, detailed monologue blocks (100-160 words per turn).
 Remember to return ONLY a valid JSON array of objects conforming to the format specified in system instructions."""
 
     segment_a_raw = robust_llm_call(
@@ -333,7 +318,7 @@ Remember to return ONLY a valid JSON array of objects conforming to the format s
     turns_a = clean_and_parse_json(segment_a_raw)
 
     # Step 3: Segment B
-    print("  Generating Segment B (Deep Dive + Outro)...")
+    print("  Generating Segment B (Deep Dive)...")
     segment_a_context = json.dumps(turns_a[-10:], indent=2)
     prompt_b = f"""Now write SEGMENT B.
 Essay: {essay_title} by {author}
@@ -343,11 +328,10 @@ Essay: {essay_title} by {author}
 PREVIOUS SEGMENT CONTEXT (last 10 turns):
 {segment_a_context}
 
-Target: 2000 words. Resume precisely where Segment A left off.
-You MUST write at least 30 to 40 back-and-forth speaker turns between Marcus and Julian to cover the remaining digest points.
-Include a Thought Experiment and Marcus's final Outro with a Listener Challenge.
+Target: ~1800 words. Resume precisely where Segment A left off.
+Focus on unpacking the primary arguments, nuances, and critical/controversial pivot points of the essay.
+Marcus should only interject once or twice in the middle of this segment with a brief question or observation (15-30 words). Julian should deliver the main content in long, detailed monologue blocks (100-160 words per turn).
 Do NOT repeat the intro.
-CRITICAL OUTRO CONSTRAINT: Do NOT include any call-to-action telling listeners to write to, email, or visit a website (specifically, do not mention 'write to us at essayistpodcast.com' or any email address/URL). The outro should end purely with the Listener Challenge.
 Remember to return ONLY a valid JSON array of objects conforming to the format specified in system instructions."""
 
     segment_b_raw = robust_llm_call(
@@ -359,8 +343,36 @@ Remember to return ONLY a valid JSON array of objects conforming to the format s
     )
     turns_b = clean_and_parse_json(segment_b_raw)
 
+    # Step 4: Segment C
+    print("  Generating Segment C (Modern Parallels + Outro)...")
+    segment_b_context = json.dumps(turns_b[-10:], indent=2)
+    prompt_c = f"""Now write SEGMENT C.
+Essay: {essay_title} by {author}
+{context_str}Full Logic Digest:
+{digest}
+
+PREVIOUS SEGMENT CONTEXT (last 10 turns):
+{segment_b_context}
+
+Target: ~1900 words. Resume precisely where Segment B left off.
+Focus on the modern parallels, a thought experiment, and the final outro.
+Julian should handle the modern parallels and thought experiment in long, detailed monologue blocks (100-160 words per turn), with Marcus interjecting once or twice (15-30 words).
+Marcus must conclude the segment with the final Outro and a Listener Challenge.
+Do NOT repeat the intro.
+CRITICAL OUTRO CONSTRAINT: Do NOT include any call-to-action telling listeners to write to, email, or visit a website (specifically, do not mention 'write to us at essayistpodcast.com' or any email address/URL). The outro should end purely with the Listener Challenge.
+Remember to return ONLY a valid JSON array of objects conforming to the format specified in system instructions."""
+
+    segment_c_raw = robust_llm_call(
+        "Segment C",
+        system_prompt,
+        prompt_c,
+        max_tokens=4000,
+        usage_log=usage_log
+    )
+    turns_c = clean_and_parse_json(segment_c_raw)
+
     # Combine dialogue lists
-    combined_turns = turns_a + turns_b
+    combined_turns = turns_a + turns_b + turns_c
 
     # Post-processing scrub: remove any "write to us at essayistpodcast.com" or website call-to-actions
     for turn in combined_turns:
@@ -392,7 +404,7 @@ Remember to return ONLY a valid JSON array of objects conforming to the format s
     full_script = json.dumps(combined_turns, indent=2)
     
     usage_log["model_used"] = "Multi-Model Fallback"
-    usage_log["segments"] = 2
+    usage_log["segments"] = 3
     
     return full_script, f"OpenRouter Multi-Model ({archetype_name})"
 

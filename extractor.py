@@ -4,9 +4,18 @@ import sys
 import time
 from urllib.parse import urljoin
 from datetime import datetime
+from pathlib import Path
+from dotenv import load_dotenv
+
+# Load .env file relative to script location
+load_dotenv(dotenv_path=Path(__file__).resolve().parent / ".env")
 
 import requests
 from bs4 import BeautifulSoup
+
+USER_AGENT_EMAIL = os.getenv("USER_AGENT_EMAIL", "contact@example.com")
+USER_AGENT_SITE = os.getenv("USER_AGENT_SITE", "https://example.com")
+PODCAST_NAME = os.getenv("PODCAST_NAME", "The Podcast")
 
 # API Base
 GUTENDEX_API_URL = "https://gutendex.com/books/"
@@ -292,7 +301,7 @@ def fetch_historical_context(author: str, title: str) -> str:
         return ""
         
     print(f"  Searching Wikipedia for context on: {query}...")
-    headers = {'User-Agent': 'TheEssayistPodcast/1.0 (https://the-essayist-podcast.com; contact@the-essayist-podcast.com)'}
+    headers = {'User-Agent': f'{PODCAST_NAME}Podcast/1.0 ({USER_AGENT_SITE}; {USER_AGENT_EMAIL})'}
     
     try:
         url = "https://en.wikipedia.org/w/api.php"
@@ -380,7 +389,7 @@ def fetch_url_with_fallback(original_url, book_id, is_html):
     If it fails, attempts to download from a list of mirrors.
     """
     headers = {
-        'User-Agent': 'TheEssayistPodcast/1.0 (https://the-essayist-podcast.com; contact@the-essayist-podcast.com)'
+        'User-Agent': f'{PODCAST_NAME}Podcast/1.0 ({USER_AGENT_SITE}; {USER_AGENT_EMAIL})'
     }
     
     if original_url:

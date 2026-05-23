@@ -3,6 +3,20 @@ import subprocess
 import shutil
 import asyncio
 import edge_tts
+from dotenv import load_dotenv
+from pathlib import Path
+
+# Load .env file relative to script location
+load_dotenv(dotenv_path=Path(__file__).resolve().parent / ".env")
+
+HOST_VOICE = os.getenv("HOST_VOICE", "en-US-BrianNeural")
+NARRATOR_VOICE = os.getenv("NARRATOR_VOICE", "en-US-AndrewNeural")
+
+HOST_1_NAME = os.getenv("HOST_1_NAME", "Host 1").upper()
+HOST_2_NAME = os.getenv("HOST_2_NAME", "Host 2").upper()
+PODCAST_NAME = os.getenv("PODCAST_NAME", "The Podcast")
+INTRO_MUSIC_PATH = os.getenv("INTRO_MUSIC_PATH", "assets/music/intro_theme.mp3")
+OUTRO_MUSIC_PATH = os.getenv("OUTRO_MUSIC_PATH", "assets/music/outro_theme.mp3")
 
 def find_ffmpeg():
     """Find ffmpeg executable."""
@@ -44,14 +58,14 @@ async def ensure_active_listening_assets():
     assets_dir = os.path.join("assets", "active_listening")
     os.makedirs(assets_dir, exist_ok=True)
     
-    # BrianNeural for Marcus (listener when Julian speaks), AndrewNeural for Julian (listener when Marcus speaks)
+    # HOST_VOICE for Host 1 (listener when Host 2 speaks), NARRATOR_VOICE for Host 2 (listener when Host 1 speaks)
     cues = {
-        "right": ("Right.", "en-US-BrianNeural"), 
-        "right_j": ("Right.", "en-US-AndrewNeural"), 
-        "mhm": ("Mhm.", "en-US-BrianNeural"),
-        "mhm_j": ("Mhm.", "en-US-AndrewNeural"),
-        "yeah": ("Yeah.", "en-US-BrianNeural"),
-        "yeah_j": ("Yeah.", "en-US-AndrewNeural")
+        "right": ("Right.", HOST_VOICE), 
+        "right_j": ("Right.", NARRATOR_VOICE), 
+        "mhm": ("Mhm.", HOST_VOICE),
+        "mhm_j": ("Mhm.", NARRATOR_VOICE),
+        "yeah": ("Yeah.", HOST_VOICE),
+        "yeah_j": ("Yeah.", NARRATOR_VOICE)
     }
     
     for filename, (text, voice) in cues.items():
@@ -87,7 +101,7 @@ def trim_silence(input_path: str, output_path: str):
 
 def mix_audio(turns: list[dict], output_path: str):
     """
-    Stitch and mix Marcus and Julian dialogue turns onto separate tracks.
+    Stitch and mix Host 1 and Host 2 dialogue turns onto separate tracks.
     Applies vocal overlaps for interruptions, overlays active listening cues,
     adds intro/outro music with ducking envelopes, and masters to -16 LUFS / -1.5 dBTP.
     """
@@ -99,8 +113,8 @@ def mix_audio(turns: list[dict], output_path: str):
     asyncio.run(ensure_active_listening_assets())
     
     # 2. Build Timeline Start Times and Durations
-    intro_music = "assets/music/intro_theme.mp3"
-    outro_music = "assets/music/outro_theme.mp3"
+    intro_music = INTRO_MUSIC_PATH
+    outro_music = OUTRO_MUSIC_PATH
     has_music = os.path.exists(intro_music) and os.path.exists(outro_music)
     
     intro_duration = 5.0
@@ -144,52 +158,52 @@ def mix_audio(turns: list[dict], output_path: str):
     outro_start = max(0.0, current_time - 3.0) if has_music else current_time
     total_duration = outro_start + (outro_duration if has_music else 2.0)
     
-    # 3. Assemble Marcus Track (Inputs and adelay filters)
-    marcus_inputs = []
-    marcus_filters = []
+    # 3. Assemble Track 1 (Inputs and adelay filters)
+    host1_inputs = []
+    host1_filters = []
     m_idx = 0
     
     for i, turn in enumerate(turns):
-        if turn["speaker"] == "MARCUS":
+        if turn["speaker"] == HOST_1_NAME:
             # Add dialogue input using trimmed file
-            marcus_inputs += ["-i", trimmed_paths[i]]
+            host1_inputs += ["-i", trimmed_paths[i]]
             delay_ms = int(start_times[i] * 1000)
-            marcus_filters.append(f"[{m_idx}:a]adelay={delay_ms}|{delay_ms}[m{m_idx}]")
+            host1_filters.append(f"[{m_idx}:a]adelay={delay_ms}|{delay_ms}[m{m_idx}]")
             m_idx += 1
 
-    # 4. Assemble Julian Track (Inputs and adelay filters)
-    julian_inputs = []
-    julian_filters = []
+    # 4. Assemble Track 2 (Inputs and adelay filters)
+    host2_inputs = []
+    host2_filters = []
     j_idx = 0
     
     for i, turn in enumerate(turns):
-        if turn["speaker"] == "JULIAN":
+        if turn["speaker"] == HOST_2_NAME:
             # Add dialogue input using trimmed file
-            julian_inputs += ["-i", trimmed_paths[i]]
+            host2_inputs += ["-i", trimmed_paths[i]]
             delay_ms = int(start_times[i] * 1000)
-            julian_filters.append(f"[{j_idx}:a]adelay={delay_ms}|{delay_ms}[j{j_idx}]")
+            host2_filters.append(f"[{j_idx}:a]adelay={delay_ms}|{delay_ms}[j{j_idx}]")
             j_idx += 1
 
-    # 5. Compile Marcus Track File
-    marcus_track_path = os.path.join(temp_dir, "marcus_full_track.mp3")
-    if marcus_filters:
-        filter_complex = ";".join(marcus_filters) + f";" + "".join(f"[m{x}]" for x in range(m_idx)) + f"amix=inputs={m_idx}:normalize=0"
-        run_ffmpeg(marcus_inputs + ["-filter_complex", filter_complex, "-b:a", "192k", marcus_track_path], "Compiling Marcus dialogue track")
+    # 5. Compile Track 1 File
+    host1_track_path = os.path.join(temp_dir, f"{HOST_1_NAME.lower()}_full_track.mp3")
+    if host1_filters:
+        filter_complex = ";".join(host1_filters) + f";" + "".join(f"[m{x}]" for x in range(m_idx)) + f"amix=inputs={m_idx}:normalize=0"
+        run_ffmpeg(host1_inputs + ["-filter_complex", filter_complex, "-b:a", "192k", host1_track_path], f"Compiling {HOST_1_NAME.title()} dialogue track")
     else:
         # Fallback silent track
-        run_ffmpeg(["-f", "lavfi", "-i", "anullsrc=r=44100:cl=stereo", "-t", str(total_duration), "-b:a", "192k", marcus_track_path], "Compiling silent Marcus track")
+        run_ffmpeg(["-f", "lavfi", "-i", "anullsrc=r=44100:cl=stereo", "-t", str(total_duration), "-b:a", "192k", host1_track_path], f"Compiling silent {HOST_1_NAME.title()} track")
 
-    # 6. Compile Julian Track File
-    julian_track_path = os.path.join(temp_dir, "julian_full_track.mp3")
-    if julian_filters:
-        filter_complex = ";".join(julian_filters) + f";" + "".join(f"[j{x}]" for x in range(j_idx)) + f"amix=inputs={j_idx}:normalize=0"
-        run_ffmpeg(julian_inputs + ["-filter_complex", filter_complex, "-b:a", "192k", julian_track_path], "Compiling Julian dialogue track")
+    # 6. Compile Track 2 File
+    host2_track_path = os.path.join(temp_dir, f"{HOST_2_NAME.lower()}_full_track.mp3")
+    if host2_filters:
+        filter_complex = ";".join(host2_filters) + f";" + "".join(f"[j{x}]" for x in range(j_idx)) + f"amix=inputs={j_idx}:normalize=0"
+        run_ffmpeg(host2_inputs + ["-filter_complex", filter_complex, "-b:a", "192k", host2_track_path], f"Compiling {HOST_2_NAME.title()} dialogue track")
     else:
         # Fallback silent track
-        run_ffmpeg(["-f", "lavfi", "-i", "anullsrc=r=44100:cl=stereo", "-t", str(total_duration), "-b:a", "192k", julian_track_path], "Compiling silent Julian track")
+        run_ffmpeg(["-f", "lavfi", "-i", "anullsrc=r=44100:cl=stereo", "-t", str(total_duration), "-b:a", "192k", host2_track_path], f"Compiling silent {HOST_2_NAME.title()} track")
 
     # 7. Mix Tracks with Music & Master
-    final_inputs = ["-i", marcus_track_path, "-i", julian_track_path]
+    final_inputs = ["-i", host1_track_path, "-i", host2_track_path]
     
     if has_music:
         print("  Music files detected. Mixing in intro/outro theme files...")
@@ -218,8 +232,8 @@ def mix_audio(turns: list[dict], output_path: str):
 
     # 8. Clean up temporary files
     try:
-        os.remove(marcus_track_path)
-        os.remove(julian_track_path)
+        os.remove(host1_track_path)
+        os.remove(host2_track_path)
     except Exception:
         pass
         
@@ -255,9 +269,9 @@ def embed_id3_tags(mp3_path: str, metadata: dict, cover_art_path: str = None):
 
     ffmpeg_args += [
         "-metadata", f"title={metadata.get('episode_title', '')}",
-        "-metadata", f"artist=Marcus & Julian",
-        "-metadata", f"album=The Essayist",
-        "-metadata", f"album_artist=The Essayist",
+        "-metadata", f"artist={HOST_1_NAME.title()} & {HOST_2_NAME.title()}",
+        "-metadata", f"album={PODCAST_NAME}",
+        "-metadata", f"album_artist={PODCAST_NAME}",
         "-metadata", f"track={metadata.get('episode_number', 1)}",
         "-metadata", f"date={metadata.get('year', '2026')}",
         "-metadata", f"genre=Podcast",

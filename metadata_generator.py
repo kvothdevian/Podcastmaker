@@ -2,6 +2,15 @@ import os
 import json
 import re
 from datetime import datetime
+from dotenv import load_dotenv
+from pathlib import Path
+
+# Load .env file relative to script location
+load_dotenv(dotenv_path=Path(__file__).resolve().parent / ".env")
+
+HOST_1_NAME = os.getenv("HOST_1_NAME", "Host 1")
+HOST_2_NAME = os.getenv("HOST_2_NAME", "Host 2")
+PODCAST_NAME = os.getenv("PODCAST_NAME", "The Podcast")
 
 
 def generate_vtt_transcript(script_text: str, words_per_minute: int = 140, speech_start_delay: float = 0.0, turns: list[dict] = None) -> str:
@@ -207,13 +216,13 @@ def build_metadata_package(
     formatted_title = f"{author_last} - {essay_title_clean} -"
 
     metadata = {
-        "podcast_name": "The Essayist",
+        "podcast_name": PODCAST_NAME,
         "episode_title": formatted_title,
         "episode_number": episode_number,
         "season": 1,
         "author": author,
         "essay_title": essay_title,
-        "hosts": ["Marcus", "Julian"],
+        "hosts": [HOST_1_NAME.title(), HOST_2_NAME.title()],
         "description": llm_metadata.get("description", ""),
         "tags": llm_metadata.get("tags", ["philosophy", "classical essays"]),
         "category": "Society & Culture",

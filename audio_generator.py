@@ -8,6 +8,9 @@ import edge_tts
 HOST_VOICE = os.getenv("HOST_VOICE", "en-US-BrianNeural")
 NARRATOR_VOICE = os.getenv("NARRATOR_VOICE", "en-US-AndrewNeural")
 
+HOST_1_NAME = os.getenv("HOST_1_NAME", "Host 1").upper()
+HOST_2_NAME = os.getenv("HOST_2_NAME", "Host 2").upper()
+
 def parse_script(script: str) -> list[dict]:
     """
     Parse the script. 
@@ -105,7 +108,7 @@ async def generate_turns_async(turns: list[dict], temp_dir: str) -> list[dict]:
         speaker = turn["speaker"]
         text = turn["dialogue"]
         intent = turn["intent"]
-        voice = HOST_VOICE if speaker == 'MARCUS' else NARRATOR_VOICE
+        voice = HOST_VOICE if speaker == HOST_1_NAME else NARRATOR_VOICE
         
         # Calculate MD5 hash and cache file path
         turn_hash = calculate_turn_hash(speaker, text, voice, intent)
@@ -155,7 +158,7 @@ def generate_audio_segments(script: str, temp_dir: str = "temp") -> list[dict]:
 def count_words(script: str) -> dict:
     """Count words per speaker."""
     turns = parse_script(script)
-    word_counts = {'MARCUS': 0, 'JULIAN': 0}
+    word_counts = {HOST_1_NAME: 0, HOST_2_NAME: 0}
     for turn in turns:
         speaker = turn["speaker"]
         text = turn["dialogue"]

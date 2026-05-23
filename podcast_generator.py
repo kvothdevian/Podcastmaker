@@ -9,6 +9,10 @@ from dotenv import load_dotenv
 # Load .env file relative to script location
 load_dotenv(dotenv_path=Path(__file__).resolve().parent / ".env")
 
+HOST_1_NAME = os.getenv("HOST_1_NAME", "Host 1").upper()
+HOST_2_NAME = os.getenv("HOST_2_NAME", "Host 2").upper()
+PODCAST_NAME = os.getenv("PODCAST_NAME", "The Podcast")
+
 from script_generator import generate_script, generate_metadata_text
 from audio_generator import generate_audio_segments, count_words
 from mixer import mix_audio, embed_id3_tags
@@ -47,7 +51,7 @@ def run_podcast_generation(essay_path: str, title: str = None, author: str = "Un
     output_base_name = safe_name # Keep filenames simple inside the folder
 
     print(f"\n{'='*50}")
-    print(f"  The Essayist - Podcast Generator")
+    print(f"  {PODCAST_NAME} - Podcast Generator")
     print(f"{'='*50}")
     print(f"  Essay : {essay_title}")
     print(f"  Author: {author}")
@@ -91,8 +95,8 @@ def run_podcast_generation(essay_path: str, title: str = None, author: str = "Un
     word_counts = count_words(script)
     total_words = sum(word_counts.values())
     est_minutes = round(total_words / 140, 1)
-    print(f"  Word counts: Marcus={word_counts.get('MARCUS',0)}, "
-          f"Julian={word_counts.get('JULIAN',0)} "
+    print(f"  Word counts: {HOST_1_NAME.title()}={word_counts.get(HOST_1_NAME,0)}, "
+          f"{HOST_2_NAME.title()}={word_counts.get(HOST_2_NAME,0)} "
           f"| Total ~{est_minutes} min")
 
     # ── Step 2: Generate Audio Segments ────────────────────────────────────

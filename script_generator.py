@@ -16,6 +16,17 @@ OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions"
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions"
 
+# Personalization Settings
+PODCAST_NAME = os.getenv("PODCAST_NAME", "The Podcast")
+HOST_1_NAME = os.getenv("HOST_1_NAME", "Host 1").upper()
+HOST_2_NAME = os.getenv("HOST_2_NAME", "Host 2").upper()
+PODCAST_INTRO_TEXT = os.getenv(
+    "PODCAST_INTRO_TEXT", 
+    f"Welcome to {PODCAST_NAME} - where the ideas that shaped the world finally get the conversation they deserve."
+)
+USER_AGENT_EMAIL = os.getenv("USER_AGENT_EMAIL", "contact@example.com")
+USER_AGENT_SITE = os.getenv("USER_AGENT_SITE", "https://example.com")
+
 MODELS = [
     {"provider": "openrouter", "id": "meta-llama/llama-3.3-70b-instruct:free"},
     {"provider": "groq", "id": "llama-3.3-70b-versatile"},
@@ -29,7 +40,7 @@ MODELS = [
 
 _call_counter = 0
 
-COMMON_OPENING = "You're listening to The Essayist - where the ideas that shaped the world finally get the conversation they deserve."
+COMMON_OPENING = PODCAST_INTRO_TEXT
 
 # --- SYSTEM PROMPTS ---
 
@@ -48,33 +59,33 @@ Your output will be used to generate a 25-to-30-minute podcast script, so ensure
 
 Return a Bulleted List of the essay's logical progression."""
 
-JSON_FORMAT_RULES = """
+JSON_FORMAT_RULES = f"""
 OUTPUT FORMAT:
 You MUST respond with a valid JSON array of objects representing dialogue turns. Do not include any other markdown decoration or wrapping (like ```json ... ```) outside the JSON array.
 Each object in the array MUST have exactly these four keys:
-1. "speaker": Either "MARCUS" or "JULIAN"
-2. "dialogue": The text for the speaker. Both hosts should have substantial, balanced dialogue turns (Marcus: 50-80 words, Julian: 70-110 words) to create a natural, flowing conversation.
+1. "speaker": Either "{HOST_1_NAME}" or "{HOST_2_NAME}"
+2. "dialogue": The text for the speaker. Both hosts should have substantial, balanced dialogue turns ({HOST_1_NAME.title()}: 50-80 words, {HOST_2_NAME.title()}: 70-110 words) to create a natural, flowing conversation.
 3. "intent": One of "inquisitive", "reflective", "excited", "serious", or "default"
 4. "active_listening_cue": Always null. DO NOT use active listening cues.
 
 Example output:
 [
-  {"speaker": "MARCUS", "dialogue": "You're listening to The Essayist - where the ideas that shaped the world finally get the conversation they deserve.", "intent": "excited", "active_listening_cue": null},
-  {"speaker": "JULIAN", "dialogue": "Welcome, Marcus. Today, we are exploring a deeply challenging essay.", "intent": "reflective", "active_listening_cue": null}
+  {{"speaker": "{HOST_1_NAME}", "dialogue": "{PODCAST_INTRO_TEXT}", "intent": "excited", "active_listening_cue": null}},
+  {{"speaker": "{HOST_2_NAME}", "dialogue": "Welcome, {HOST_1_NAME.title()}. Today, we are exploring a deeply challenging essay.", "intent": "reflective", "active_listening_cue": null}}
 ]
 """
 
-MONOLOGUE_WITH_INTERJECTIONS_PROMPT = UNBIASED_REPRESENTATION_RULES + """You are writing for "The Essayist" podcast. 
+MONOLOGUE_WITH_INTERJECTIONS_PROMPT = UNBIASED_REPRESENTATION_RULES + f"""You are writing for "{PODCAST_NAME}" podcast. 
 Two hosts with balanced, peer-to-peer intellectual roles:
-1. MARCUS: Co-host. Focuses heavily on the author's biography, the historical context, contemporary reception, intellectual influences, and the real-world implications or criticisms of the essay's arguments.
-2. JULIAN: Co-host. Focuses heavily on direct textual analysis, explaining the internal logic of the arguments, and how the essay fits into the author's broader system of thought.
+1. {HOST_1_NAME}: Co-host. Focuses heavily on the author's biography, the historical context, contemporary reception, intellectual influences, and the real-world implications or criticisms of the essay's arguments.
+2. {HOST_2_NAME}: Co-host. Focuses heavily on direct textual analysis, explaining the internal logic of the arguments, and how the essay fits into the author's broader system of thought.
 
 NARRATIVE ARCHETYPE: Co-Host Debate & Editorial Review
 - The hosts are intellectual equals who have both thoroughly read and analyzed the essay.
 - They engage in a dynamic, organic dialogue, building on each other's points, adding historical context, and exploring the logic together.
-- DO NOT use a rigid teacher-student or Q&A format. Avoid Marcus just asking brief questions and Julian giving long lectures. Instead, they share the floor, discussing the essay like seasoned colleagues.
-- Marcus sets the stage in the intro, introduces the author/essay, and then Julian and Marcus analyze the ideas together.
-- Marcus finishes the episode with a Listener Challenge in the outro.
+- DO NOT use a rigid teacher-student or Q&A format. Avoid {HOST_1_NAME.title()} just asking brief questions and {HOST_2_NAME.title()} giving long lectures. Instead, they share the floor, discussing the essay like seasoned colleagues.
+- {HOST_1_NAME.title()} sets the stage in the intro, introduces the author/essay, and then {HOST_2_NAME.title()} and {HOST_1_NAME.title()} analyze the ideas together.
+- {HOST_1_NAME.title()} finishes the episode with a Listener Challenge in the outro.
 - Both hosts must remain entirely objective, avoiding modern moralizing or apologizing for the author.
 
 CONVERSATIONAL NATURALNESS & NAME-CALLING CONSTRAINTS:
@@ -91,8 +102,8 @@ def call_openrouter(messages: list, model: str, max_tokens: int = 4000, usage_lo
     headers = {
         "Authorization": f"Bearer {OPENROUTER_API_KEY}",
         "Content-Type": "application/json",
-        "HTTP-Referer": "https://the-essayist-podcast.com",
-        "X-Title": "The Essayist Podcast",
+        "HTTP-Referer": USER_AGENT_SITE,
+        "X-Title": f"{PODCAST_NAME} Podcast",
     }
     payload = {
         "model": model,
@@ -188,11 +199,11 @@ def call_groq(messages: list, model: str, max_tokens: int = 4000, usage_log: dic
 def text_to_json_turns(text: str) -> list:
     """Converts a legacy plain text script into the new JSON turn structure as a fallback."""
     turns = []
-    pattern = re.compile(r'(?:\[|\*\*\[?)(MARCUS|JULIAN|HOST|NARRATOR)(?:\]|\*?\]?)\s*:', re.IGNORECASE)
+    pattern = re.compile(rf'(?:\[|\*\*\[?)({HOST_1_NAME}|{HOST_2_NAME}|HOST|NARRATOR)(?:\]|\*?\]?)\s*:', re.IGNORECASE)
     matches = list(pattern.finditer(text))
     
     if not matches:
-        return [{"speaker": "MARCUS", "dialogue": text, "intent": "default", "active_listening_cue": None}]
+        return [{"speaker": HOST_1_NAME, "dialogue": text, "intent": "default", "active_listening_cue": None}]
         
     first_match = matches[0]
     if first_match.start() > 0:
@@ -201,12 +212,12 @@ def text_to_json_turns(text: str) -> list:
         pre_text = re.sub(r'\*\*', '', pre_text)
         pre_text = pre_text.strip()
         if pre_text and any(c.isalnum() for c in pre_text):
-            turns.append({"speaker": "MARCUS", "dialogue": pre_text, "intent": "default", "active_listening_cue": None})
+            turns.append({"speaker": HOST_1_NAME, "dialogue": pre_text, "intent": "default", "active_listening_cue": None})
             
     for i in range(len(matches)):
         m = matches[i]
         raw_speaker = next(g for g in m.groups() if g is not None).upper()
-        speaker = 'MARCUS' if raw_speaker in ('MARCUS', 'HOST') else 'JULIAN'
+        speaker = HOST_1_NAME if raw_speaker in (HOST_1_NAME, 'HOST') else HOST_2_NAME
         
         start = m.end()
         end = matches[i+1].start() if i+1 < len(matches) else len(text)
@@ -325,11 +336,11 @@ Essay: {essay_title} by {author}
 {digest}
 
 Target: ~1800 words. Focus on the introduction, historical/biographical context, and the essay's core thesis and foundation.
-Marcus must start the script with the exact opening statement: "{COMMON_OPENING}" and introduce Julian.
-Marcus and Julian must introduce themselves by name naturally in the intro (e.g., Marcus says "I'm Marcus" and Julian says "And I'm Julian").
-They must engage in a balanced, peer-to-peer discussion: Marcus focused on biographical/historical details, and Julian on the core philosophical thesis.
-Both hosts should have substantial, balanced dialogue turns: Marcus (50-80 words per turn) and Julian (70-110 words per turn) in an active back-and-forth.
-Avoid having Marcus ask simple questions or speak in short, snappy interjections. They are equal partners.
+{HOST_1_NAME.title()} must start the script with the exact opening statement: "{COMMON_OPENING}" and introduce {HOST_2_NAME.title()}.
+{HOST_1_NAME.title()} and {HOST_2_NAME.title()} must introduce themselves by name naturally in the intro (e.g., {HOST_1_NAME.title()} says "I'm {HOST_1_NAME.title()}" and {HOST_2_NAME.title()} says "And I'm {HOST_2_NAME.title()}").
+They must engage in a balanced, peer-to-peer discussion: {HOST_1_NAME.title()} focused on biographical/historical details, and {HOST_2_NAME.title()} on the core philosophical thesis.
+Both hosts should have substantial, balanced dialogue turns: {HOST_1_NAME.title()} (50-80 words per turn) and {HOST_2_NAME.title()} (70-110 words per turn) in an active back-and-forth.
+Avoid having {HOST_1_NAME.title()} ask simple questions or speak in short, snappy interjections. They are equal partners.
 Remember the Name-Calling Constraint: Limit direct name-calling to at most 3-4 times in this segment.
 Remember to return ONLY a valid JSON array of objects conforming to the format specified in system instructions."""
 
@@ -355,8 +366,8 @@ PREVIOUS SEGMENT CONTEXT (last 10 turns):
 
 Target: ~1800 words. Resume precisely where Segment A left off.
 Focus on unpacking the primary arguments, nuances, and critical/controversial pivot points of the essay.
-They must engage in a balanced, peer-to-peer discussion: Marcus focused on historical context/reception/relevance, and Julian on the textual analysis and logical arguments.
-Both hosts should have substantial, balanced dialogue turns: Marcus (50-80 words per turn) and Julian (70-110 words per turn) in an active back-and-forth.
+They must engage in a balanced, peer-to-peer discussion: {HOST_1_NAME.title()} focused on historical context/reception/relevance, and {HOST_2_NAME.title()} on the textual analysis and logical arguments.
+Both hosts should have substantial, balanced dialogue turns: {HOST_1_NAME.title()} (50-80 words per turn) and {HOST_2_NAME.title()} (70-110 words per turn) in an active back-and-forth.
 Do NOT use a teacher-student Q&A format. They are equal partners exploring the ideas together.
 Do NOT repeat the intro.
 Remember the Name-Calling Constraint: Limit direct name-calling to at most 3-4 times in this segment.
@@ -384,11 +395,11 @@ PREVIOUS SEGMENT CONTEXT (last 10 turns):
 
 Target: ~1900 words. Resume precisely where Segment B left off.
 Focus on the deeper philosophical roots, contemporary reception/intellectual influences, and the final outro.
-They must engage in a balanced, peer-to-peer discussion: Marcus focused on biographical/intellectual influences and real-world implications, and Julian on the textual analysis and system of thought.
-Both hosts should have substantial, balanced dialogue turns: Marcus (50-80 words per turn) and Julian (70-110 words per turn) in an active back-and-forth.
-Marcus must conclude the segment with the final Outro and a Listener Challenge.
+They must engage in a balanced, peer-to-peer discussion: {HOST_1_NAME.title()} focused on biographical/intellectual influences and real-world implications, and {HOST_2_NAME.title()} on the textual analysis and system of thought.
+Both hosts should have substantial, balanced dialogue turns: {HOST_1_NAME.title()} (50-80 words per turn) and {HOST_2_NAME.title()} (70-110 words per turn) in an active back-and-forth.
+{HOST_1_NAME.title()} must conclude the segment with the final Outro and a Listener Challenge.
 Do NOT repeat the intro.
-CRITICAL OUTRO CONSTRAINT: Do NOT include any call-to-action telling listeners to write to, email, or visit a website (specifically, do not mention 'write to us at essayistpodcast.com' or any email address/URL). The outro should end purely with the Listener Challenge.
+CRITICAL OUTRO CONSTRAINT: Do NOT include any call-to-action telling listeners to write to, email, or visit a website. The outro should end purely with the Listener Challenge.
 
 CRITICAL CONTEXT & BOTH-SIDING CONSTRAINT:
 - Limit modern comparisons, parallels, 'both-siding', disclaimers, or modern moralizing context to at most 10% of this segment/script.
@@ -519,7 +530,7 @@ def get_author_last_name(author: str) -> str:
 
 def generate_metadata_text(essay_title: str, author: str, essay_summary: str, usage_log: dict) -> dict:
     """Use a cheap LLM call to generate Spotify-ready title, description, and tags."""
-    prompt = f"""Generate Spotify podcast metadata for The Essayist podcast.
+    prompt = f"""Generate Spotify podcast metadata for the "{PODCAST_NAME}" podcast.
 
 Essay: "{essay_title}" by {author}
 Summary: {essay_summary[:500]}

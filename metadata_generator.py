@@ -169,11 +169,9 @@ def generate_show_notes(metadata: dict, essay_title: str, author: str) -> str:
 
 ---
 
-## Follow The Essayist
+## Follow {PODCAST_NAME}
 
-If you found this episode valuable, follow **The Essayist** on Spotify so you never miss an episode.
-
-*The Essayist - where the ideas that shaped the world finally get the conversation they deserve.*
+If you found this episode valuable, follow **{PODCAST_NAME}** on Spotify so you never miss an episode.
 
 ---
 

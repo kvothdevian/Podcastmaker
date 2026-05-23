@@ -588,6 +588,6 @@ CRITICAL JSON RULES:
     essay_title_clean = essay_title.title().strip()
     return {
         "episode_title": f"{author_last} - {essay_title_clean} -",
-        "description": f"In this episode of The Essayist, we explore {essay_title} by {author}. A deep dive into the ideas that shaped intellectual history.",
+        "description": f"In this episode of {PODCAST_NAME}, we explore {essay_title} by {author}. A deep dive into the ideas that shaped intellectual history.",
         "tags": ["philosophy", "classical essays", author_last.lower(), "Stoicism", "ideas"],
     }

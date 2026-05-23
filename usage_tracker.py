@@ -1,6 +1,12 @@
 import os
 import json
 from datetime import datetime
+from dotenv import load_dotenv
+from pathlib import Path
+
+# Load .env file relative to script location
+load_dotenv(dotenv_path=Path(__file__).resolve().parent / ".env")
+PODCAST_NAME = os.getenv("PODCAST_NAME", "The Podcast")
 
 USAGE_LOG_FILE = "usage_log.json"
 
@@ -8,7 +14,7 @@ USAGE_LOG_FILE = "usage_log.json"
 def print_session_summary(usage_log: dict):
     """Print a formatted session summary to the terminal."""
     print("\n" + "=" * 40)
-    print("     Session Summary - The Essayist")
+    print(f"     Session Summary - {PODCAST_NAME}")
     print("=" * 40)
     print(f"  Essay:      {usage_log.get('essay', 'Unknown')}")
     print(f"  Author:     {usage_log.get('author', 'Unknown')}")

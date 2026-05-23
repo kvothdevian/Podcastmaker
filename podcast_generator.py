@@ -147,7 +147,7 @@ def run_podcast_generation(essay_path: str, title: str = None, author: str = "Un
 
 def main():
     parser = argparse.ArgumentParser(
-        description="The Essayist - Podcast Generator",
+        description=f"{PODCAST_NAME} - Podcast Generator",
         formatter_class=argparse.RawTextHelpFormatter,
     )
     parser.add_argument("essay_file", help="Path to the extracted essay .txt file")

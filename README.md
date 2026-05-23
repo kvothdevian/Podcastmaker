@@ -1,18 +1,23 @@
-# The Essayist: Automated Classical Essay Podcast Generator
+# 🎙️ The Essayist: Automated Classical Essay Podcast Generator
 
-**The Essayist** is a command-line pipeline that automatically searches, extracts, and transforms classical essays and philosophical works from Project Gutenberg into fully produced, professional podcasts. 
+[![Python Version](https://img.shields.io/badge/Python-3.10%2B-blue.svg)](https://www.python.org/)
+[![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+[![TTS Engine](https://img.shields.io/badge/TTS-Edge--TTS-orange.svg)](https://github.com/rany2/edge-tts)
+[![FFmpeg](https://img.shields.io/badge/Audio%20Engine-FFmpeg-red.svg)](https://ffmpeg.org/)
 
-The generated podcasts feature two distinct AI hosts, **Marcus** (the curious host/examiner representing the listener) and **Julian** (the intellectual narrator and guide), discussing complex historical concepts using Socratic dialogue or philosophical analysis—complete with background music, dynamic audio pacing, active listening cues, and standard ID3 metadata.
+**The Essayist** is a highly optimized, automated command-line pipeline designed to search, extract, and convert classical essays and philosophical treatises from Project Gutenberg into fully produced, professional podcasts. 
+
+Featuring two intellectual AI co-hosts, **Marcus** (who contextualizes historical settings, biography, and critiques) and **Julian** (who guides the deep philosophical analysis and text breakdown), the generated show simulates an engaging, organic peer-to-peer discussion—complete with background music, dynamic audio pacing, active listening cues, and standard ID3 metadata.
 
 ---
 
 ## 🏗️ Architecture & Pipeline Workflow
 
-Below is the high-level workflow of the system from essay extraction to the final tagged MP3 podcast:
+The flowchart below demonstrates the execution path from initial user search query to the final mastered MP3 output:
 
 ```mermaid
 graph TD
-    A[User Search Query] --> B[Gutenberg API / mirrors]
+    A[User Search Query] --> B[Gutenberg API / Mirror Fallbacks]
     B --> C[Extract Selected Essay & Clean text for TTS]
     C --> D[Wikipedia Context Lookup]
     C & D --> E[LLM Script Generation via OpenRouter/Groq]
@@ -28,11 +33,11 @@ graph TD
 
 ## ✨ Features
 
-- 📚 **Robust Gutenberg Integration**: Search and extract text/HTML format essays directly from Project Gutenberg using the Gutendex API, with built-in fallbacks to four distinct mirror networks in case of downtime or bot-protection issues.
-- 🧹 **TTS-Ready Text Cleaning**: Automatically cleans Gutenberg texts by trimming license boilerplate, fixing line-wrap hyphenations, and normalizing white space.
-- 🔍 **Wikipedia Historical Context**: Programmatically fetches historical and biographical context about the author/subject from Wikipedia to feed the podcast's introduction.
-- 🤖 **Multi-Model LLM Scripting**: Generates engaging Socratic discussions or philosophical debates using OpenRouter or Groq. Utilizes a list of fallback models to ensure robust execution even during rate limits or API outages.
-- 🎙️ **Concurrent Text-to-Speech (TTS)**: Translates script turns into voice concurrently using Microsoft Edge TTS, applying phonetic pronunciation corrections for difficult philosopher names (e.g., Nietzsche, Schopenhauer) and speed/pitch adjustments based on the host's tone.
+- 📚 **Robust Gutenberg Integration**: Search and extract text/HTML format essays directly from Project Gutenberg using the Gutendex API. Includes a smart fallback layer that uses numeric ID detection on timeout to bypass redundant prompts and scrape files directly via four distinct mirror networks.
+- 🧹 **TTS-Ready Text Cleaning**: Automatically cleans raw Gutenberg text files by trimming licensing boilerplate, reconstructing line-wrap hyphenations, and normalizing white space for optimal speech rendering.
+- 🔍 **Wikipedia Historical Context**: Programmatically fetches biographical summaries and historical reception context about the author and subject to feed the podcast's introduction.
+- 🤖 **Co-Host Debate Archetype**: Generates a natural dialogue between intellectual equals using OpenRouter or Groq. Marcus focuses on history and biography while Julian targets textual philosophy. Turns are balanced, avoiding rigid Q&A monologues, and name-calling is capped to a natural minimum (at most 3-4 times per segment).
+- 🎙️ **Concurrent Text-to-Speech (TTS)**: Translates script turns into voice concurrently using Microsoft Edge TTS, applying phonetic pronunciation corrections for difficult philosopher names (e.g., Nietzsche, Schopenhauer) and speed/pitch adjustments based on the host's tone (reflective, excited, serious).
 - 🎵 **Studio-Grade Audio Mixing**: Uses FFmpeg to mix vocal tracks with background music, adjust volume levels, inject realistic listener cues (like *mhm*, *yeah*, *right*), and stitch everything together.
 - 📝 **Automatic Metadata & SEO Package**: Generates Spotify-ready title, SEO description, tags, interactive chapter markers, a WebVTT transcript, and embeds ID3 tags directly into the final MP3 file.
 
@@ -40,7 +45,7 @@ graph TD
 
 ## 📁 Repository Structure
 
-```
+```text
 Project_Gutenberg_Extractor_CLI/
 ├── assets/                  # Contains intro/outro themes and active listening sound clips
 │   ├── active_listening/    # "mhm.mp3", "yeah.mp3", etc.

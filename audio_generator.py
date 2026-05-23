@@ -68,9 +68,9 @@ async def text_to_wav(text: str, voice: str, output_path: str, intent: str = "de
     elif intent == "serious":
         rate_val = -1
         
-    # Slight speed boost for Marcus / Julian baselines
+    # Baseline speed rate adjustment (slightly slower to correct the pacing)
     if "Andrew" in voice or "Brian" in voice:
-        rate_val += 3
+        rate_val -= 4
         
     rate_sign = "+" if rate_val >= 0 else ""
     rate = f"{rate_sign}{rate_val}%"
@@ -80,17 +80,19 @@ async def text_to_wav(text: str, voice: str, output_path: str, intent: str = "de
     for attempt in range(max_retries):
         try:
             communicate = edge_tts.Communicate(text=fixed_text, voice=voice, rate=rate, pitch=pitch)
-            await asyncio.wait_for(communicate.save(output_path), timeout=20.0)
+            await asyncio.wait_for(communicate.save(output_path), timeout=60.0)
             return # Success
         except Exception as e:
+            err_details = f"[{type(e).__name__}] {str(e) or repr(e)}"
             if attempt == max_retries - 1:
-                raise RuntimeError(f"Edge TTS failed after {max_retries} attempts: {e}")
-            print(f"    TTS failed (attempt {attempt + 1}/{max_retries}): {e}. Retrying in 2s...")
-            await asyncio.sleep(2)
+                raise RuntimeError(f"Edge TTS failed after {max_retries} attempts: {err_details}")
+            backoff = (attempt + 1) * 3
+            print(f"    TTS failed (attempt {attempt + 1}/{max_retries}): {err_details}. Retrying in {backoff}s...")
+            await asyncio.sleep(backoff)
 
 async def generate_turns_async(turns: list[dict], temp_dir: str) -> list[dict]:
     """Generates audio files for all turns concurrently, utilizing an MD5 cache."""
-    semaphore = asyncio.Semaphore(5)  # Limit concurrent Edge TTS requests to 5 to avoid connection errors
+    semaphore = asyncio.Semaphore(3)  # Limit concurrent Edge TTS requests to 3 to avoid connection errors
     
     async def sem_text_to_wav(text: str, voice: str, path: str, intent: str):
         async with semaphore:
@@ -130,7 +132,7 @@ async def generate_turns_async(turns: list[dict], temp_dir: str) -> list[dict]:
         tasks.append(sem_text_to_wav(text, voice, path, intent))
         
     if tasks:
-        print(f"    Rendering {len(tasks)} new speech segments concurrently (concurrency limit: 5)...")
+        print(f"    Rendering {len(tasks)} new speech segments concurrently (concurrency limit: 3)...")
         await asyncio.gather(*tasks)
     else:
         print("    All speech segments found in cache. Skipping TTS generation.")

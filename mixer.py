@@ -70,6 +70,21 @@ async def ensure_active_listening_assets():
                         pass
 
 
+def trim_silence(input_path: str, output_path: str):
+    """Trim leading and trailing silence from an audio file using FFmpeg. Falls back to copy if it fails."""
+    try:
+        args = [
+            "-i", input_path,
+            "-af", "silenceremove=start_periods=1:start_threshold=-50dB:stop_periods=-1:stop_threshold=-50dB",
+            output_path
+        ]
+        run_ffmpeg(args, f"Trimming silence from {os.path.basename(input_path)}")
+        if not os.path.exists(output_path) or os.path.getsize(output_path) == 0:
+            raise RuntimeError("Trimmed file is empty or missing")
+    except Exception as e:
+        print(f"  Warning: Silence trimming failed for {input_path} ({e}). Using original file.")
+        shutil.copy2(input_path, output_path)
+
 def mix_audio(turns: list[dict], output_path: str):
     """
     Stitch and mix Marcus and Julian dialogue turns onto separate tracks.
@@ -99,20 +114,29 @@ def mix_audio(turns: list[dict], output_path: str):
     current_time = speech_start_delay
     start_times = []
     durations = []
+    trimmed_paths = []
     
-    print("  Calculating conversation timeline and offsets...")
+    print("  Trimming silence and calculating conversation timeline...")
     for i, turn in enumerate(turns):
-        duration = get_audio_duration(turn["audio_path"])
+        trimmed_path = os.path.join(temp_dir, f"trimmed_turn_{i:03d}.mp3")
+        trim_silence(turn["audio_path"], trimmed_path)
+        trimmed_paths.append(trimmed_path)
+        
+        duration = get_audio_duration(trimmed_path)
         durations.append(duration)
         start_times.append(current_time)
         
-        # Interruption overlap or dialogue gap detection
-        gap = 0.3
+        # Save start time and duration to the turn dict (used for accurate WebVTT/Chapters)
+        turn["start_time"] = current_time
+        turn["duration"] = duration
+        
+        # Dialogue gap: using a more natural 0.6s gap (since silence is trimmed) to match original pacing
+        gap = 0.6
         if i + 1 < len(turns):
             next_text = turns[i+1]["dialogue"].lower().strip()
             # If next turn begins with an interruption word, overlap speech by -200ms
             if next_text.startswith(("wait", "but ", "hold ", "stop", "exactly", "indeed", "no ", "yes!")):
-                gap = -0.2
+                gap = 0.1
         
         current_time += duration + gap
         
@@ -127,8 +151,8 @@ def mix_audio(turns: list[dict], output_path: str):
     
     for i, turn in enumerate(turns):
         if turn["speaker"] == "MARCUS":
-            # Add dialogue input
-            marcus_inputs += ["-i", turn["audio_path"]]
+            # Add dialogue input using trimmed file
+            marcus_inputs += ["-i", trimmed_paths[i]]
             delay_ms = int(start_times[i] * 1000)
             marcus_filters.append(f"[{m_idx}:a]adelay={delay_ms}|{delay_ms}[m{m_idx}]")
             m_idx += 1
@@ -140,8 +164,8 @@ def mix_audio(turns: list[dict], output_path: str):
     
     for i, turn in enumerate(turns):
         if turn["speaker"] == "JULIAN":
-            # Add dialogue input
-            julian_inputs += ["-i", turn["audio_path"]]
+            # Add dialogue input using trimmed file
+            julian_inputs += ["-i", trimmed_paths[i]]
             delay_ms = int(start_times[i] * 1000)
             julian_filters.append(f"[{j_idx}:a]adelay={delay_ms}|{delay_ms}[j{j_idx}]")
             j_idx += 1
@@ -198,6 +222,13 @@ def mix_audio(turns: list[dict], output_path: str):
         os.remove(julian_track_path)
     except Exception:
         pass
+        
+    for path in trimmed_paths:
+        try:
+            if os.path.exists(path):
+                os.remove(path)
+        except Exception:
+            pass
         
     print(f"\n  Audio assembled: {output_path}")
     return speech_start_delay

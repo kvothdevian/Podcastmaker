@@ -55,7 +55,14 @@ def run_podcast_generation(essay_path: str, title: str = None, author: str = "Un
     print(f"  Output: {episode_dir}")
     print(f"{'='*50}\n")
 
-    usage_log = {"essay": essay_title, "author": author}
+    usage_log = {
+        "essay": essay_title,
+        "author": author,
+        "provider_stats": {
+            "openrouter": {"calls": 0, "prompt_tokens": 0, "completion_tokens": 0},
+            "groq": {"calls": 0, "prompt_tokens": 0, "completion_tokens": 0}
+        }
+    }
 
     # ── Step 0: Fetch Historical Context ────────────────────────────────────
     print("[0/5] Fetching historical context payload (Wikipedia)...")
@@ -111,6 +118,7 @@ def run_podcast_generation(essay_path: str, title: str = None, author: str = "Un
         episode_number=episode_num,
         safe_name=output_base_name,
         speech_start_delay=speech_start_delay,
+        turns=turns,
     )
 
     # ── Step 5: Embed ID3 Tags ──────────────────────────────────────────────

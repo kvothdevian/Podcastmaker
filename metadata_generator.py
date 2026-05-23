@@ -4,33 +4,52 @@ import re
 from datetime import datetime
 
 
-def generate_vtt_transcript(script_text: str, words_per_minute: int = 140, speech_start_delay: float = 0.0) -> str:
+def generate_vtt_transcript(script_text: str, words_per_minute: int = 140, speech_start_delay: float = 0.0, turns: list[dict] = None) -> str:
     """
-    Generate a WebVTT transcript from the podcast script text.
-    Estimates timestamps based on word count per speaker turn.
+    Generate a WebVTT transcript from the podcast script text or turns list.
+    If turns list is provided with start_time and duration keys (calculated during mixing),
+    uses those exact timestamps. Otherwise, estimates timestamps based on word count.
     """
-    turns = []
+    if turns and all("start_time" in t and "duration" in t for t in turns):
+        lines = ["WEBVTT", ""]
+        for turn in turns:
+            speaker = turn["speaker"].upper()
+            dialogue = turn["dialogue"].strip()
+            if not dialogue:
+                continue
+            start_time = turn["start_time"]
+            duration = turn["duration"]
+            start_ts = _seconds_to_vtt(start_time)
+            end_ts = _seconds_to_vtt(start_time + duration)
+            
+            lines.append(f"{start_ts} --> {end_ts}")
+            lines.append(f"<{speaker}>{dialogue}")
+            lines.append("")
+        return "\n".join(lines)
+
+    # Fallback to estimating based on word counts
+    parsed_turns = []
     try:
         data = json.loads(script_text)
         if isinstance(data, list):
             for item in data:
                 if isinstance(item, dict) and "speaker" in item and "dialogue" in item:
-                    turns.append((item["speaker"].upper(), item["dialogue"]))
+                    parsed_turns.append((item["speaker"].upper(), item["dialogue"]))
     except Exception:
         pass
 
-    if not turns:
+    if not parsed_turns:
         # Fallback to legacy parsing
         from audio_generator import parse_script
         parsed = parse_script(script_text)
         for turn in parsed:
-            turns.append((turn["speaker"], turn["dialogue"]))
+            parsed_turns.append((turn["speaker"], turn["dialogue"]))
 
     lines = ["WEBVTT", ""]
     current_time = speech_start_delay
     words_per_second = words_per_minute / 60.0
 
-    for speaker, dialogue in turns:
+    for speaker, dialogue in parsed_turns:
         dialogue = dialogue.strip()
         if not dialogue:
             continue
@@ -43,7 +62,7 @@ def generate_vtt_transcript(script_text: str, words_per_minute: int = 140, speec
         lines.append(f"<{speaker}>{dialogue}")
         lines.append("")
         
-        current_time += duration + 0.3 # Include turn gap
+        current_time += duration + 0.15 # Include turn gap
 
     return "\n".join(lines)
 
@@ -55,30 +74,34 @@ def _seconds_to_vtt(seconds: float) -> str:
     return f"{h:02d}:{m:02d}:{s:06.3f}"
 
 
-def generate_chapter_markers(script_text: str, audio_segments: list, speech_start_delay: float = 0.0) -> str:
+def generate_chapter_markers(script_text: str, audio_segments: list, speech_start_delay: float = 0.0, turns: list[dict] = None) -> str:
     """
     Generate Spotify-compatible chapter markers for a 15-minute dialogue.
-    Estimates timestamps based on total word count at 140 wpm.
+    If turns list is provided with start_time and duration keys, uses actual audio duration.
+    Otherwise, estimates timestamps based on total word count at 140 wpm.
     """
-    turns = []
-    try:
-        data = json.loads(script_text)
-        if isinstance(data, list):
-            for item in data:
-                if isinstance(item, dict) and "speaker" in item and "dialogue" in item:
-                    turns.append(item["dialogue"])
-    except Exception:
-        pass
+    if turns and all("start_time" in t and "duration" in t for t in turns):
+        total_duration = (turns[-1]["start_time"] + turns[-1]["duration"]) - speech_start_delay
+    else:
+        turns_dialogue = []
+        try:
+            data = json.loads(script_text)
+            if isinstance(data, list):
+                for item in data:
+                    if isinstance(item, dict) and "speaker" in item and "dialogue" in item:
+                        turns_dialogue.append(item["dialogue"])
+        except Exception:
+            pass
 
-    if not turns:
-        # Fallback to legacy
-        from audio_generator import parse_script
-        parsed = parse_script(script_text)
-        turns = [t["dialogue"] for t in parsed]
+        if not turns_dialogue:
+            # Fallback to legacy
+            from audio_generator import parse_script
+            parsed = parse_script(script_text)
+            turns_dialogue = [t["dialogue"] for t in parsed]
 
-    words_per_second = 140 / 60.0
-    total_words = sum(len(t.split()) for t in turns)
-    total_duration = total_words / words_per_second
+        words_per_second = 140 / 60.0
+        total_words = sum(len(t.split()) for t in turns_dialogue)
+        total_duration = total_words / words_per_second
 
     def fmt(seconds):
         m = int(seconds // 60)
@@ -172,6 +195,7 @@ def build_metadata_package(
     episode_number: int = 1,
     safe_name: str = "episode",
     speech_start_delay: float = 0.0,
+    turns: list[dict] = None,
 ) -> dict:
     """
     Build the full metadata package.
@@ -214,14 +238,14 @@ def build_metadata_package(
 
     # Write VTT transcript
     vtt_path = os.path.join(output_dir, f"{safe_name}_transcript.vtt")
-    vtt = generate_vtt_transcript(script_text, speech_start_delay=speech_start_delay)
+    vtt = generate_vtt_transcript(script_text, speech_start_delay=speech_start_delay, turns=turns)
     with open(vtt_path, "w", encoding="utf-8") as f:
         f.write(vtt)
     print(f"  VTT Transcript: {vtt_path}")
 
     # Write chapter markers
     chapters_path = os.path.join(output_dir, f"{safe_name}_chapters.txt")
-    chapters = generate_chapter_markers(script_text, audio_segments, speech_start_delay=speech_start_delay)
+    chapters = generate_chapter_markers(script_text, audio_segments, speech_start_delay=speech_start_delay, turns=turns)
     with open(chapters_path, "w", encoding="utf-8") as f:
         f.write(chapters)
     print(f"  Chapter Markers: {chapters_path}")

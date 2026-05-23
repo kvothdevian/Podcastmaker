@@ -39,6 +39,36 @@ def search_books():
         data = response.json()
     except requests.RequestException as e:
         print(f"Error connecting to Gutenberg API: {e}")
+        
+        # If the user already provided a numeric ID, use it directly without asking
+        if query.isdigit():
+            book_id = query
+            print(f"Using provided Book ID {book_id} directly...")
+            return {
+                "id": int(book_id),
+                "title": f"Gutenberg Book {book_id}",
+                "authors": [{"name": "Unknown Author"}],
+                "formats": {
+                    "text/plain": f"https://www.gutenberg.org/files/{book_id}/{book_id}-0.txt",
+                    "text/html": f"https://www.gutenberg.org/files/{book_id}/{book_id}-h/{book_id}-h.htm"
+                }
+            }
+            
+        use_direct = input("\nWould you like to enter a Project Gutenberg Book ID directly? (y/n): ").strip().lower()
+        if use_direct == 'y':
+            while True:
+                book_id = input("Enter Project Gutenberg Book ID (e.g. 16643): ").strip()
+                if book_id.isdigit():
+                    return {
+                        "id": int(book_id),
+                        "title": f"Gutenberg Book {book_id}",
+                        "authors": [{"name": "Unknown Author"}],
+                        "formats": {
+                            "text/plain": f"https://www.gutenberg.org/files/{book_id}/{book_id}-0.txt",
+                            "text/html": f"https://www.gutenberg.org/files/{book_id}/{book_id}-h/{book_id}-h.htm"
+                        }
+                    }
+                print("Invalid ID. Please enter numbers only.")
         return None
 
     results = data.get('results', [])
@@ -376,6 +406,52 @@ def fetch_url_with_fallback(original_url, book_id, is_html):
             
     return None
 
+def parse_metadata_from_content(content, is_html):
+    """
+    Parses title and author from Gutenberg text/HTML content.
+    """
+    title = None
+    author = None
+    
+    if is_html:
+        try:
+            soup = BeautifulSoup(content, 'html.parser')
+            # Check <title> tag first
+            title_tag = soup.find('title')
+            if title_tag:
+                title_text = title_tag.get_text().strip()
+                # Often Gutenberg HTML title is "The Project Gutenberg eBook of [Title], by [Author]"
+                match = re.search(r'eBook of (.*?)(?:, by (.*?))?$', title_text, re.IGNORECASE)
+                if match:
+                    title = match.group(1).strip()
+                    if match.group(2):
+                        author = match.group(2).strip()
+                else:
+                    title = title_text
+            text_content = soup.get_text()
+        except Exception:
+            text_content = content
+    else:
+        text_content = content
+
+    # Search in the first 150 lines of text
+    lines = text_content.split('\n')[:150]
+    for line in lines:
+        if not title:
+            t_match = re.match(r'^\s*Title:\s*(.+)$', line, re.IGNORECASE)
+            if t_match:
+                title = t_match.group(1).strip()
+        if not author:
+            a_match = re.match(r'^\s*Author:\s*(.+)$', line, re.IGNORECASE)
+            if a_match:
+                author = a_match.group(1).strip()
+
+    if title:
+        title = re.sub(r'^The Project Gutenberg eBook of\s*', '', title, flags=re.IGNORECASE).strip()
+        title = re.sub(r'^Project Gutenberg\'s\s*', '', title, flags=re.IGNORECASE).strip()
+        
+    return title, author
+
 def main():
     if not os.path.exists(OUTPUT_DIR):
         os.makedirs(OUTPUT_DIR)
@@ -384,12 +460,13 @@ def main():
     if not book: return
 
     book_id = book.get('id')
-    print(f"\nFetching formats for: {book.get('title')}")
+    print(f"\nFetching formats for Book ID: {book_id} (known as: {book.get('title')})")
     html_url, text_url = fetch_book_formats(book)
     
     essays = []
     content_format = "unknown"
     success = False
+    downloaded_content = ""
 
     if html_url:
         res = fetch_url_with_fallback(html_url, book_id, is_html=True)
@@ -400,6 +477,7 @@ def main():
                 essays = get_html_essays(res.text, base_url)
                 if essays:
                     success = True
+                    downloaded_content = res.text
                 else:
                     print("HTML parsing yielded no essays. Attempting text fallback...")
             except Exception as e:
@@ -412,12 +490,32 @@ def main():
                 content_format = "text"
                 essays = get_text_essays(res.text)
                 success = True
+                downloaded_content = res.text
             except Exception as e:
                 print(f"Failed to parse Plain Text: {e}")
             
     if not success:
         print("Error: No readable text or HTML format could be downloaded for this book.")
         return
+
+    # Try to parse metadata if we have placeholder/unknown title or author
+    parsed_title, parsed_author = parse_metadata_from_content(downloaded_content, is_html=(content_format == "html"))
+    
+    if parsed_title and ("Gutenberg Book" in book.get('title', '') or not book.get('title')):
+        book['title'] = parsed_title
+        print(f"Automatically identified Book Title: {parsed_title}")
+    if parsed_author and (not book.get('authors') or book.get('authors')[0].get('name') == "Unknown Author"):
+        book['authors'] = [{"name": parsed_author}]
+        print(f"Automatically identified Author: {parsed_author}")
+
+    # Fallback to manual entry ONLY if metadata parsing fails completely
+    if not book.get('title') or "Gutenberg Book" in book.get('title', ''):
+        user_title = input(f"Could not automatically detect book title. Please enter title (default: Gutenberg Book {book_id}): ").strip()
+        book['title'] = user_title or f"Gutenberg Book {book_id}"
+        
+    if not book.get('authors') or book.get('authors')[0].get('name') == "Unknown Author":
+        user_author = input(f"Could not automatically detect author. Please enter author (default: Unknown Author): ").strip()
+        book['authors'] = [{"name": user_author or "Unknown Author"}]
 
     # Select Essay
     selection = select_essay(essays)

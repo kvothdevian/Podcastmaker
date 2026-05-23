@@ -17,17 +17,17 @@ GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions"
 
 MODELS = [
-    {"provider": "openrouter", "id": "openrouter/free"},
-    {"provider": "groq", "id": "llama-3.3-70b-versatile"},
     {"provider": "openrouter", "id": "meta-llama/llama-3.3-70b-instruct:free"},
-    {"provider": "groq", "id": "meta-llama/llama-4-scout-17b-16e-instruct"},
+    {"provider": "groq", "id": "llama-3.3-70b-versatile"},
     {"provider": "openrouter", "id": "nousresearch/hermes-3-llama-3.1-405b:free"},
-    {"provider": "groq", "id": "openai/gpt-oss-120b"},
-    {"provider": "openrouter", "id": "google/gemma-4-31b-it:free"},
-    {"provider": "groq", "id": "qwen/qwen3-32b"},
-    {"provider": "openrouter", "id": "qwen/qwen3-next-80b-a3b-instruct:free"},
     {"provider": "groq", "id": "llama-3.1-8b-instant"},
+    {"provider": "openrouter", "id": "deepseek/deepseek-v4-flash:free"},
+    {"provider": "groq", "id": "mixtral-8x7b-32768"},
+    {"provider": "openrouter", "id": "openrouter/free"},
+    {"provider": "groq", "id": "gemma2-9b-it"},
 ]
+
+_call_counter = 0
 
 COMMON_OPENING = "You're listening to The Essayist - where the ideas that shaped the world finally get the conversation they deserve."
 
@@ -53,7 +53,7 @@ OUTPUT FORMAT:
 You MUST respond with a valid JSON array of objects representing dialogue turns. Do not include any other markdown decoration or wrapping (like ```json ... ```) outside the JSON array.
 Each object in the array MUST have exactly these four keys:
 1. "speaker": Either "MARCUS" or "JULIAN"
-2. "dialogue": The text for the speaker. Julian's turns should be long and detailed, around 100-160 words. Marcus's turns should be short and snappy, around 15-30 words.
+2. "dialogue": The text for the speaker. Both hosts should have substantial, balanced dialogue turns (Marcus: 50-80 words, Julian: 70-110 words) to create a natural, flowing conversation.
 3. "intent": One of "inquisitive", "reflective", "excited", "serious", or "default"
 4. "active_listening_cue": Always null. DO NOT use active listening cues.
 
@@ -65,16 +65,22 @@ Example output:
 """
 
 MONOLOGUE_WITH_INTERJECTIONS_PROMPT = UNBIASED_REPRESENTATION_RULES + """You are writing for "The Essayist" podcast. 
-Two hosts with clear, asymmetrical roles:
-1. MARCUS (Host): Host of the show. He does the introduction and conclusion (outro). During the main discussion, he does NOT engage in rapid back-and-forth dialogue. Instead, he only interjects once or twice per segment to ask a major transition question or request clarification. His lines must be brief (15-30 words).
-2. JULIAN (Narrator/Guide): The primary presenter/speaker who explains the essay's core themes, context, and arguments. He carries the main theme of the episode. He speaks in longer, continuous, and highly detailed monograph-style turns (100–160 words) to unpack the ideas comprehensively.
+Two hosts with balanced, peer-to-peer intellectual roles:
+1. MARCUS: Co-host. Focuses heavily on the author's biography, the historical context, contemporary reception, intellectual influences, and the real-world implications or criticisms of the essay's arguments.
+2. JULIAN: Co-host. Focuses heavily on direct textual analysis, explaining the internal logic of the arguments, and how the essay fits into the author's broader system of thought.
 
-NARRATIVE ARCHETYPE: Monologue with Asymmetrical Interjections
-- Marcus sets the stage in the intro, introduces the author/essay, and then hands the floor to Julian.
-- Julian delivers the core content, going deep into the arguments, thesis, and evidence.
-- Marcus chimes in only once or twice per segment with a thoughtful high-level question or transition prompt, allowing Julian to continue his explanation.
+NARRATIVE ARCHETYPE: Co-Host Debate & Editorial Review
+- The hosts are intellectual equals who have both thoroughly read and analyzed the essay.
+- They engage in a dynamic, organic dialogue, building on each other's points, adding historical context, and exploring the logic together.
+- DO NOT use a rigid teacher-student or Q&A format. Avoid Marcus just asking brief questions and Julian giving long lectures. Instead, they share the floor, discussing the essay like seasoned colleagues.
+- Marcus sets the stage in the intro, introduces the author/essay, and then Julian and Marcus analyze the ideas together.
 - Marcus finishes the episode with a Listener Challenge in the outro.
 - Both hosts must remain entirely objective, avoiding modern moralizing or apologizing for the author.
+
+CONVERSATIONAL NATURALNESS & NAME-CALLING CONSTRAINTS:
+- The dialogue must feel organic, warm, and natural.
+- CRITICAL NAME-CALLING CONSTRAINT: The hosts must NOT repeat each other's names in every turn. In real life, friends and colleagues rarely use each other's names during a conversation. Limit direct name-calling to at most 3-4 times per segment (mainly during the intro, outro, or major topic transitions). DO NOT prefix or suffix turns with names unnecessarily.
+- Each host must validate and build on the other's comments naturally (e.g., "That aligns perfectly with...", "Exactly, and if you look at the text...", "That biography detail explains why he writes that...").
 """ + JSON_FORMAT_RULES
 
 # Max chars sent to LLM - using larger context if available
@@ -94,7 +100,7 @@ def call_openrouter(messages: list, model: str, max_tokens: int = 4000, usage_lo
         "max_tokens": max_tokens,
         "temperature": 0.7,
     }
-    response = requests.post(OPENROUTER_API_URL, headers=headers, json=payload, timeout=240)
+    response = requests.post(OPENROUTER_API_URL, headers=headers, json=payload, timeout=45)
     response.raise_for_status()
     data = response.json()
     if "error" in data:
@@ -115,6 +121,11 @@ def call_openrouter(messages: list, model: str, max_tokens: int = 4000, usage_lo
             
         if usage_log is not None:
             usage = data.get("usage", {})
+            p_stats = usage_log.setdefault("provider_stats", {}).setdefault("openrouter", {"calls": 0, "prompt_tokens": 0, "completion_tokens": 0})
+            p_stats["calls"] += 1
+            p_stats["prompt_tokens"] += usage.get("prompt_tokens", 0)
+            p_stats["completion_tokens"] += usage.get("completion_tokens", 0)
+            
             usage_log["prompt_tokens"] = usage_log.get("prompt_tokens", 0) + usage.get("prompt_tokens", 0)
             usage_log["completion_tokens"] = usage_log.get("completion_tokens", 0) + usage.get("completion_tokens", 0)
             
@@ -129,13 +140,18 @@ def call_groq(messages: list, model: str, max_tokens: int = 4000, usage_log: dic
         "Authorization": f"Bearer {GROQ_API_KEY}",
         "Content-Type": "application/json",
     }
+    
+    # Cap max_tokens to 2048 for models other than llama-3.3-70b-versatile to avoid Groq 400/413 errors
+    if model != "llama-3.3-70b-versatile":
+        max_tokens = min(max_tokens, 2048)
+        
     payload = {
         "model": model,
         "messages": messages,
         "max_tokens": max_tokens,
         "temperature": 0.7,
     }
-    response = requests.post(GROQ_API_URL, headers=headers, json=payload, timeout=240)
+    response = requests.post(GROQ_API_URL, headers=headers, json=payload, timeout=45)
     response.raise_for_status()
     data = response.json()
     if "error" in data:
@@ -156,6 +172,11 @@ def call_groq(messages: list, model: str, max_tokens: int = 4000, usage_log: dic
             
         if usage_log is not None:
             usage = data.get("usage", {})
+            p_stats = usage_log.setdefault("provider_stats", {}).setdefault("groq", {"calls": 0, "prompt_tokens": 0, "completion_tokens": 0})
+            p_stats["calls"] += 1
+            p_stats["prompt_tokens"] += usage.get("prompt_tokens", 0)
+            p_stats["completion_tokens"] += usage.get("completion_tokens", 0)
+            
             usage_log["prompt_tokens"] = usage_log.get("prompt_tokens", 0) + usage.get("prompt_tokens", 0)
             usage_log["completion_tokens"] = usage_log.get("completion_tokens", 0) + usage.get("completion_tokens", 0)
             
@@ -305,7 +326,11 @@ Essay: {essay_title} by {author}
 
 Target: ~1800 words. Focus on the introduction, historical/biographical context, and the essay's core thesis and foundation.
 Marcus must start the script with the exact opening statement: "{COMMON_OPENING}" and introduce Julian.
-Marcus should introduce the topic, and then Julian should take over. Marcus should only interject once or twice in the middle of this segment with a brief question or observation (15-30 words). Julian should deliver the main content in long, detailed monologue blocks (100-160 words per turn).
+Marcus and Julian must introduce themselves by name naturally in the intro (e.g., Marcus says "I'm Marcus" and Julian says "And I'm Julian").
+They must engage in a balanced, peer-to-peer discussion: Marcus focused on biographical/historical details, and Julian on the core philosophical thesis.
+Both hosts should have substantial, balanced dialogue turns: Marcus (50-80 words per turn) and Julian (70-110 words per turn) in an active back-and-forth.
+Avoid having Marcus ask simple questions or speak in short, snappy interjections. They are equal partners.
+Remember the Name-Calling Constraint: Limit direct name-calling to at most 3-4 times in this segment.
 Remember to return ONLY a valid JSON array of objects conforming to the format specified in system instructions."""
 
     segment_a_raw = robust_llm_call(
@@ -330,8 +355,11 @@ PREVIOUS SEGMENT CONTEXT (last 10 turns):
 
 Target: ~1800 words. Resume precisely where Segment A left off.
 Focus on unpacking the primary arguments, nuances, and critical/controversial pivot points of the essay.
-Marcus should only interject once or twice in the middle of this segment with a brief question or observation (15-30 words). Julian should deliver the main content in long, detailed monologue blocks (100-160 words per turn).
+They must engage in a balanced, peer-to-peer discussion: Marcus focused on historical context/reception/relevance, and Julian on the textual analysis and logical arguments.
+Both hosts should have substantial, balanced dialogue turns: Marcus (50-80 words per turn) and Julian (70-110 words per turn) in an active back-and-forth.
+Do NOT use a teacher-student Q&A format. They are equal partners exploring the ideas together.
 Do NOT repeat the intro.
+Remember the Name-Calling Constraint: Limit direct name-calling to at most 3-4 times in this segment.
 Remember to return ONLY a valid JSON array of objects conforming to the format specified in system instructions."""
 
     segment_b_raw = robust_llm_call(
@@ -355,11 +383,22 @@ PREVIOUS SEGMENT CONTEXT (last 10 turns):
 {segment_b_context}
 
 Target: ~1900 words. Resume precisely where Segment B left off.
-Focus on the modern parallels, a thought experiment, and the final outro.
-Julian should handle the modern parallels and thought experiment in long, detailed monologue blocks (100-160 words per turn), with Marcus interjecting once or twice (15-30 words).
+Focus on the deeper philosophical roots, contemporary reception/intellectual influences, and the final outro.
+They must engage in a balanced, peer-to-peer discussion: Marcus focused on biographical/intellectual influences and real-world implications, and Julian on the textual analysis and system of thought.
+Both hosts should have substantial, balanced dialogue turns: Marcus (50-80 words per turn) and Julian (70-110 words per turn) in an active back-and-forth.
 Marcus must conclude the segment with the final Outro and a Listener Challenge.
 Do NOT repeat the intro.
 CRITICAL OUTRO CONSTRAINT: Do NOT include any call-to-action telling listeners to write to, email, or visit a website (specifically, do not mention 'write to us at essayistpodcast.com' or any email address/URL). The outro should end purely with the Listener Challenge.
+
+CRITICAL CONTEXT & BOTH-SIDING CONSTRAINT:
+- Limit modern comparisons, parallels, 'both-siding', disclaimers, or modern moralizing context to at most 10% of this segment/script.
+- Do NOT decrease the word count of the segment (~1900 words).
+- Spend 90% of the segment/monologues exploring:
+  1. The deeper philosophical root of the author's arguments and how they connect to their broader philosophical framework or system.
+  2. The historical context, contemporary reception, and intellectual influences on the author's thinking.
+  3. A detailed textual analysis of the essay's arguments, letting the author's voice and ideas stand raw, uncensored, and unfiltered.
+
+Remember the Name-Calling Constraint: Limit direct name-calling to at most 3-4 times in this segment.
 Remember to return ONLY a valid JSON array of objects conforming to the format specified in system instructions."""
 
     segment_c_raw = robust_llm_call(
@@ -411,8 +450,27 @@ Remember to return ONLY a valid JSON array of objects conforming to the format s
 
 def robust_llm_call(step_name: str, system_prompt: str, user_prompt: str, max_tokens: int = 4000, usage_log: dict = None) -> str:
     """Helper to perform an LLM call with model-level fallbacks."""
+    global _call_counter
+    preferred = "openrouter" if _call_counter % 2 == 0 else "groq"
+    _call_counter += 1
+    
+    # Separate openrouter and groq models
+    or_models = [m for m in MODELS if m["provider"] == "openrouter"]
+    groq_models = [m for m in MODELS if m["provider"] == "groq"]
+    
+    # Interleave starting with the preferred provider
+    ordered_models = []
+    first_list = or_models if preferred == "openrouter" else groq_models
+    second_list = groq_models if preferred == "openrouter" else or_models
+    
+    for i in range(max(len(first_list), len(second_list))):
+        if i < len(first_list):
+            ordered_models.append(first_list[i])
+        if i < len(second_list):
+            ordered_models.append(second_list[i])
+            
     last_tried_provider = None
-    for model_idx, model_cfg in enumerate(MODELS):
+    for model_idx, model_cfg in enumerate(ordered_models):
         provider = model_cfg["provider"]
         model_id = model_cfg["id"]
         
@@ -438,6 +496,8 @@ def robust_llm_call(step_name: str, system_prompt: str, user_prompt: str, max_to
             print(f"    [{step_name}] Error with {model_id} (via {provider}): {e}")
             if usage_log is not None:
                 usage_log["fallbacks_triggered"] = usage_log.get("fallbacks_triggered", 0) + 1
+            # Wait 5 seconds to let rate limits refresh before trying the next fallback model
+            time.sleep(5)
             # Move immediately to the next model
             continue
             
@@ -469,13 +529,17 @@ Return ONLY valid JSON in this exact format (no other text):
   "episode_title": "Under 60 chars. Start with author's name or core concept keyword.",
   "description": "150-word SEO description. First sentence must contain the philosopher's name and essay topic. Natural language.",
   "tags": ["tag1", "tag2", "tag3", "tag4", "tag5"]
-}}"""
+}}
+
+CRITICAL JSON RULES:
+1. Do NOT use double quotes inside string values. If you need to quote a title or phrase inside a string, use single quotes (e.g. 'Self-Reliance').
+2. Ensure the JSON is perfectly valid and can be parsed by Python's json.loads()."""
 
     try:
         temp_log = {}
         raw = robust_llm_call(
             step_name="Metadata",
-            system_prompt="You are a podcast metadata generator. You MUST return valid JSON matching the user's requested format.",
+            system_prompt="You are a podcast metadata generator. You MUST return valid JSON matching the user's requested format. Crucial: Do NOT use double quotes inside string values; use single quotes instead to ensure valid JSON.",
             user_prompt=prompt,
             max_tokens=500,
             usage_log=temp_log
@@ -495,6 +559,14 @@ Return ONLY valid JSON in this exact format (no other text):
             usage_log["prompt_tokens"] = usage_log.get("prompt_tokens", 0) + temp_log.get("prompt_tokens", 0)
             usage_log["completion_tokens"] = usage_log.get("completion_tokens", 0) + temp_log.get("completion_tokens", 0)
             usage_log["fallbacks_triggered"] = usage_log.get("fallbacks_triggered", 0) + temp_log.get("fallbacks_triggered", 0)
+            
+            # Merge provider stats
+            if "provider_stats" in temp_log:
+                for prov, stats in temp_log["provider_stats"].items():
+                    target = usage_log.setdefault("provider_stats", {}).setdefault(prov, {"calls": 0, "prompt_tokens": 0, "completion_tokens": 0})
+                    target["calls"] += stats.get("calls", 0)
+                    target["prompt_tokens"] += stats.get("prompt_tokens", 0)
+                    target["completion_tokens"] += stats.get("completion_tokens", 0)
 
         return metadata
     except Exception as e:
